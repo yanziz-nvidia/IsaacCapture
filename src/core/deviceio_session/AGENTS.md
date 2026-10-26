@@ -38,6 +38,12 @@ SPDX-License-Identifier: Apache-2.0
   is declared (SETUP) with its first record, so `tick()` queues new SETUP before the FRAME. The host closes
   gracefully so a final ERROR reaches the robot, and the client reports the server's ERROR text in preference to any
   later link failure.
+- **Python bindings** (`PyRemoteSession`, `PyRemoteSessionHost` in `py_utils/session.hpp`): only the blocking calls
+  release the GIL (connect, wait_ready, wait_hello, start_session, tick, close, listener accept/reject). Wrapper
+  members change only with the GIL held, a released call works on its own reference, and the host's mutex is never
+  waited for with the GIL held nor held while waiting for it, so the two cannot deadlock. pybind destroys a holder
+  with the GIL held, so a wrapper whose teardown blocks releases it in its destructor too. Test a release by timing
+  the main thread from before `Thread.start()`, which itself waits for the GIL.
 - **`McapRecordingConfig::stream`** makes `DeviceIOSession` record into an `mcap::IWritable`,
   unchunked (`McapRecordStreamWriter::writer_options()`), instead of a file. The writable must
   outlive the session, because the writer writes the end of the recording when it is destroyed.

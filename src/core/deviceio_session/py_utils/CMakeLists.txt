@@ -9,6 +9,7 @@ target_include_directories(deviceio_py_utils INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
 )
 
-target_link_libraries(deviceio_py_utils INTERFACE deviceio::deviceio_session)
+# PyRemoteSession owns the McapRecordStreamReader (mcap/record_stream.hpp) that its client feeds.
+target_link_libraries(deviceio_py_utils INTERFACE deviceio::deviceio_session mcap::mcap_core)
 
 add_library(deviceio::deviceio_py_utils ALIAS deviceio_py_utils)
