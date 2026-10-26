@@ -55,17 +55,18 @@ qualification for fixed frames, status, calibration, bounded buffering, and shut
 
 ## Implications for the design
 
-The interface design is authoritative for release scope. This table separates required
-adapter behavior from proposals that still need a decision.
+The [standalone-plugin design](pose-provider-plugin-design.md) is authoritative for release
+scope. This table separates required adapter behavior from proposals that still need a
+decision.
 
 | Finding | Design rule |
 |---|---|
 | Backends offer different live poses (odometry, loop-corrected) at different rates (every frame, keyframes) | Each adapter states which pose it publishes and at what rate; selecting the production live pose remains a decision gate |
 | VINS-Fusion, OpenVINS, Basalt, and DROID-SLAM report no tracking status | The adapter derives `Initializing` and `Lost`; a failure that ends tracking for good is fatal |
-| Frames change in different ways: a new map, a new odometry frame, an early reset, a re-anchored map | The adapter detects every change and reports `Lost` until the backend is back in the original frame |
+| Frames change in different ways: a new map, a new odometry frame, an early reset, a re-anchored map | The adapter must preserve the run's fixed frame: report `Lost` while recovery to it is possible, otherwise fail the run. Unobservable frame changes prevent qualification of that mode |
 | Outputs use different native frames: rectified cameras, IMU bodies, a different frame for an export | Each output declares its own native frame, including any rectification rotation |
 | Refined output is in memory, a file, an end-of-run step, or a separate offline tool, and may cover only keyframes | A future refined-output contract must declare coverage, frame, completion, and provenance. Neither that API nor an offline tool is an initial-release commitment |
-| A repeatable mode can take a different code path (VINS-Fusion) | A future offline tool must distinguish reproducing the live computation from re-estimating in another mode. Initial recording preserves exact inputs, outcomes, setup, and build identity |
+| A repeatable mode can take a different code path (VINS-Fusion) | Distinguish replaying the live accepted sequence from re-estimating in another mode. Record original sensors once, setup/build identity and preparation/admission decisions; qualify reconstruction and engine repeatability per profile |
 | VINS-Fusion, OpenVINS, and OKVIS2 can refine calibration online | The adapter declares this behavior; internal estimates must not silently mutate the canonical applied setup |
 | Process-global state is common (ORB-SLAM3, VINS-Fusion, Kimera-VIO, and others) | One rig per capture process |
 | Finishing differs: ORB-SLAM3 and stella_vslam return without waiting for optimization; VINS-Fusion never returns | The adapter qualifies completion and abort behavior; configurable timeout versus explicit finish handshake remains an integration decision |
@@ -78,7 +79,7 @@ adapter behavior from proposals that still need a decision.
 
 | Aspect | Finding |
 |---|---|
-| Input | Stereo, optionally with IMU batched into each `TrackStereo()` call; timestamps in double seconds (`include/System.h:110`) |
+| Input | Stereo, optionally with IMU batched into each `TrackStereo()` call; timestamps in `double` seconds (`include/System.h:110`) |
 | Live output | `TrackStereo()` returns the camera pose once per frame; `GetTrackingState()` reports state. `MapChanged()` only flags a large change, and keeps its counter in a function-local static (`src/System.cc:244`, `:321`, `:490`) |
 | World frame | With an IMU, the map is rotated to gravity at inertial initialization and again after 5 s and 15 s; `GetTimeFromIMUInit()` is 0 until initialization (`src/LocalMapping.cc:184-224`, `:1283`; `src/System.cc:1339`) |
 | Refined output | Only `SaveTrajectoryEuRoC()`, a file written after `Shutdown()`: it uses the largest map, re-anchors to its first keyframe, skips lost and other-map frames, and writes IMU-body poses with an IMU. The per-map overload needs a `Map*` that `System` never exposes (`src/System.cc:662-777`; `include/System.h:158`, `:213`) |
@@ -87,18 +88,25 @@ adapter behavior from proposals that still need a decision.
 | Repeatable mode | None: local mapping and loop closing always run on their own threads (`src/System.cc:197`, `:214`) |
 | Process-global state | Camera intrinsics are static members of `Frame` (`include/Frame.h:204-209`) |
 | Finishing | `Shutdown()` returns without waiting for the mapping threads; the wait loop is commented out (`src/System.cc:515-545`) |
-| Calibration | Pinhole with k1, k2, p1, p2, optional k3, or Kannala-Brandt. It rectifies stereo itself and rewrites the IMU extrinsic for the rectified frame (`src/Settings.cc:205-219`, `:502`, `:525`) |
+| Calibration | Pinhole with `k1, k2, p1, p2`, optional `k3`, or Kannala-Brandt. It rectifies stereo itself and rewrites the IMU extrinsic for the rectified frame (`src/Settings.cc:205-219`, `:502`, `:525`) |
 | License | GPL-3.0 |
 
-The internal OAK-D baseline fork adds the `System` methods an adapter needs: the ID of the
-map being tracked, map-reset and relocalization counters, per-frame poses for a chosen map,
-an atlas merge, a final global bundle adjustment, and a shutdown that waits.
+An internal OAK-D integration fork demonstrates external settings generation, image
+preparation and IMU batching, but also patches core calibration/settings and trajectory-export
+handling. A later internal revision adds map IDs, reset/relocalization counters,
+trajectory/refinement access and joined shutdown. These extensions are not prerequisites for
+basic live adaptation.
+
+The target is an adapter around unmodified upstream. Public-API workarounds, stable frames
+through inertial initialization/recovery, and process-level cleanup still need qualification.
+These forks are integration evidence, not proof that stock upstream meets the contract. See the
+[design risks](pose-provider-plugin-design.md#risks-and-mitigations) for scope and fallbacks.
 
 ### cuVSLAM
 
 | Aspect | Finding |
 |---|---|
-| Input | 1–32 cameras and 0–1 IMU; IMU through `RegisterImuMeasurement()` in timestamp order; timestamps in int64 ns (`libs/cuvslam/cuvslam2.h:229`, `:274`, `:649`) |
+| Input | 1–32 cameras and 0–1 IMU; IMU through `RegisterImuMeasurement()` in timestamp order; timestamps in `int64` ns (`libs/cuvslam/cuvslam2.h:229`, `:274`, `:649`) |
 | Live output | `Tracker::Track()` returns an odometry pose with covariance, empty on failure, and a SLAM pose that jumps at loop closures; neither is revised (`cuvslam2.h:313`, `:1133`) |
 | World frame | The rig frame at the first frame; gravity comes from `GetLastGravity()`, in the current rig frame (`cuvslam2.h:310`, `:674-682`) |
 | Refined output | `Slam::GetAllSlamPoses()`, any time, every frame, rebuilt from keyframe-relative poses. The default `max_map_size = 300` caps the pose graph (`cuvslam2.h:810`, `:950`; `async_slam.cpp:275`) |
@@ -107,14 +115,14 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 | Repeatable mode | The offline tracker modes run single-threaded and are reproducible (`cuvslam2.h:1062`) |
 | Process-global state | Logging verbosity; the API is instance-based |
 | Finishing | No end-of-run step is needed, because the history is readable at any time |
-| Calibration | Pinhole, Fisheye (4), Brown (5, ordered k1, k2, k3, p1, p2), Polynomial (8, OpenCV rational order). IMU noise densities and random walks, no time-offset field (`cuvslam2.h:167-227`) |
+| Calibration | Pinhole, Fisheye (4), Brown (5, ordered `k1, k2, k3, p1, p2`), Polynomial (8, OpenCV rational order). IMU noise densities and random walks, no time-offset field (`cuvslam2.h:167-227`) |
 | License | NVIDIA Community License, which limits use to NVIDIA platforms (`LICENSE`) |
 
 ### VINS-Fusion
 
 | Aspect | Finding |
 |---|---|
-| Input | Mono with IMU, stereo with IMU, or stereo. IMU arrives as a separate stream, and an image waits for an IMU sample at or after its time plus the time offset; timestamps in double seconds (`estimator.h:49-51`) |
+| Input | Mono with IMU, stereo with IMU, or stereo. IMU arrives as a separate stream, and an image waits for an IMU sample at or after its time plus the time offset; timestamps in `double` seconds (`estimator.h:49-51`) |
 | Live output | IMU-body pose of the newest window frame; no status, no covariance; output starts after about 11 frames, and threaded mode processes every second frame (`visualization.cpp:124-170`; `estimator.cpp:114-118`) |
 | World frame | Gravity from the initial accelerations, yaw zeroed, origin at the first frame; never re-aligned (`estimator.cpp:47-52`, `:345-364`) |
 | Refined output | Only in the separate `loop_fusion` node: a pose graph over keyframes, readable any time through ROS or a CSV, never finalized; it stays in the VIO world (`pose_graph.cpp:481-508`, `:782-845`) |
@@ -130,7 +138,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 
 | Aspect | Finding |
 |---|---|
-| Input | Mono, stereo, or more cameras, always with IMU; IMU as a separate stream; timestamps in double seconds (`VioManager.h:75-81`) |
+| Input | Mono, stereo, or more cameras, always with IMU; IMU as a separate stream; timestamps in `double` seconds (`VioManager.h:75-81`) |
 | Live output | Filter IMU state at the newest camera time, with a 6×6 covariance; the only status is `initialized()` (`ROS1Visualizer.cpp:591-624`) |
 | World frame | Gravity-aligned at initialization and fixed for the run. The default static initialization needs the rig still, then moving (`StaticInitializer.cpp:121-140`) |
 | Refined output | None; loop closure and mapping live in separate repositories |
@@ -146,7 +154,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 
 | Aspect | Finding |
 |---|---|
-| Input | Stereo with IMU, or stereo only; IMU in a separate queue; timestamps in int64 ns (`optical_flow.h:54-59`; `vio_estimator.h:79-80`) |
+| Input | Stereo with IMU, or stereo only; IMU in a separate queue; timestamps in `int64` ns (`optical_flow.h:54-59`; `vio_estimator.h:79-80`) |
 | Live output | World-from-IMU state every processed frame; no status, no covariance; frames can be skipped (`sqrt_keypoint_vio.cpp:486-493`) |
 | World frame | Gravity-aligned at the first frame and never re-aligned (`sqrt_keypoint_vio.cpp:185-220`) |
 | Refined output | None in real time. The separate `basalt_mapper` optimizes keyframes offline from marginalization data saved during the run (`mapper.cpp:338-345`; `doc/VioMapping.md:50-79`) |
@@ -162,7 +170,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 
 | Aspect | Finding |
 |---|---|
-| Input | Stereo, mono, or RGB-D, always with IMU; IMU as a separate stream; timestamps in int64 ns (`Pipeline.h:64-85`) |
+| Input | Stereo, mono, or RGB-D, always with IMU; IMU as a separate stream; timestamps in `int64` ns (`Pipeline.h:64-85`) |
 | Live output | Poses only at keyframes, 0.2–5 s apart; covariance optional; tracking status only on the frontend, behind a protected callback (`StereoImuPipeline.cpp:95-114`) |
 | World frame | Gravity-aligned with static IMU initialization; the EuRoC default initializes from ground truth; never re-aligned (`VioBackend.h:143-194`) |
 | Refined output | Optional loop closure with a pose-graph optimizer; the corrected keyframe trajectory updates at every keyframe through a callback or CSV (`LoopClosureDetector.cpp:198-391`) |
@@ -194,7 +202,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 
 | Aspect | Finding |
 |---|---|
-| Input | Mono, stereo, or RGB-D; no IMU; stereo images must be rectified; timestamps in double seconds (`system.h:138-140`) |
+| Input | Mono, stereo, or RGB-D; no IMU; stereo images must be rectified; timestamps in `double` seconds (`system.h:138-140`) |
 | Live output | World-from-camera for the rectified left camera, with a status string; the frame that goes lost still returns a pose (`system.cc:586-611`) |
 | World frame | The left camera at the first initialized frame; not gravity-aligned; the root stays fixed (`initializer.cc:346-349`) |
 | Refined output | A file, written any time, covering every non-lost frame since the last reset; only keyframes in memory (`trajectory_io.cc:64-81`) |
@@ -203,14 +211,14 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 | Repeatable mode | None; build and runtime options reduce variation (`CMakeLists.txt:193-195`) |
 | Process-global state | One static mutex shared by all map databases (`map_database.h:270`) |
 | Finishing | Shutdown joins the mapping threads but not a loop bundle adjustment in progress (`system.cc:222-243`) |
-| Calibration | Perspective (k1, k2, p1, p2, k3), fisheye, equirectangular, radial division; the caller rectifies; no IMU parameters |
+| Calibration | Perspective (`k1, k2, p1, p2, k3`), fisheye, equirectangular, radial division; the caller rectifies; no IMU parameters |
 | License | BSD-2-Clause; one g2o component is LGPL |
 
 ### RTAB-Map
 
 | Aspect | Finding |
 |---|---|
-| Input | Mono, RGB-D, stereo, or lidar. Stereo with raw IMU only through a VIO odometry backend; IMU as a separate stream; timestamps in double seconds (`OdometryThread.cpp:181-217`) |
+| Input | Mono, RGB-D, stereo, or lidar. Stereo with raw IMU only through a VIO odometry backend; IMU as a separate stream; timestamps in `double` seconds (`OdometryThread.cpp:181-217`) |
 | Live output | Odometry every frame, empty when lost, with covariance; the map pose is a map correction times odometry and jumps at loop closures (`Odometry.h:94-102`; `Rtabmap.h:340-363`) |
 | World frame | Odometry starts at identity or from the IMU orientation; the map is anchored at its oldest node, but the anchor can move with pose priors, long-term memory transfer, or `OptimizeFromGraphEnd` (`Rtabmap.cpp:5444-5470`) |
 | Refined output | Any time in memory, for graph nodes only; explicit post-processing adds loop closures and global bundle adjustment (`Rtabmap.h:331`, `:503`) |
@@ -226,7 +234,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 
 | Aspect | Finding |
 |---|---|
-| Input | Mono, stereo, or RGB-D; no IMU; rectified images; timestamps stored as float32 (`droid.py:61-69`) |
+| Input | Mono, stereo, or RGB-D; no IMU; rectified images; timestamps stored as `float32` (`droid.py:61-69`) |
 | Live output | `track()` returns nothing; only keyframe poses exist, and the window revises and deletes them; no status (`depth_video.py:26`, `:41`) |
 | World frame | The first frame; not gravity-aligned. The stereo baseline is hard-coded to 0.1, so translations need rescaling (`droid_kernels.cu:227-230`) |
 | Refined output | `terminate()` runs global bundle adjustment, re-reads the entire input, and returns every frame (`droid.py:71-85`; `trajectory_filler.py:42-110`) |
@@ -235,7 +243,7 @@ an atlas merge, a final global bundle adjustment, and a shutdown that waits.
 | Repeatable mode | The synchronous class; the asynchronous variant is documented as non-deterministic |
 | Process-global state | The network is pinned to the first GPU, and PyTorch settings are process-wide |
 | Finishing | `terminate()` blocks through global bundle adjustment and the fill pass |
-| Calibration | Pinhole fx, fy, cx, cy only; the caller undistorts and rectifies |
+| Calibration | Pinhole `fx, fy, cx, cy` only; the caller undistorts and rectifies |
 | License | BSD-3-Clause; the network weights' license is unknown |
 
 ## Limits
