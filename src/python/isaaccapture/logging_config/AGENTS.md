@@ -79,9 +79,10 @@ export no log hook, so the descriptor is the only seam.
   was rewritten to remove.
 - **Capture files, never pipes.** A pipe blocks writes past its 64 KiB capacity
   until a reader drains it, and a drain thread in this process needs the GIL
-  while the native call doing the writing holds it — `oxr_bindings.cpp` releases
-  none, so the two deadlock. A write to a file needs nothing else to run. Do not
-  "simplify" this back to a pipe. The same reasoning rules out a pty.
+  while the native call doing the writing holds it — most of `oxr_bindings.cpp`
+  (session teardown included) releases none, so the two deadlock. A write to a
+  file needs nothing else to run. Do not "simplify" this back to a pipe. The
+  same reasoning rules out a pty.
 - **A process isaaccapture launches is not the host.** Its descriptors are ours
   to point at the capture file, and that is how out-of-process vendor output is
   kept off the terminal without touching the host: `plugin.cpp` opens
