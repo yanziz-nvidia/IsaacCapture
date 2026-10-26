@@ -41,7 +41,7 @@ ui = [
 ]
 ovxr = [
     "ovxr==0.1.0.5842",
-    "cuda-bindings>=12.9,<14",
+    "cuda-bindings>=13,<14",
 ]
 desktop-mirror = [
     # OVUI requires 3.12; core Capture continues to support 3.11.
