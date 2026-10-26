@@ -3,5 +3,5 @@
 
 # Application overrides: docs/source/getting_started/ovxr.rst.
 ovxr==0.1.0.5842
-# CUDA camera output mapping also needs bindings when no desktop mirror is used.
-cuda-bindings>=12.9,<14
+# GPU camera output uses CUDA 13 bindings, matching the Isaac Lab runtime.
+cuda-bindings>=13,<14

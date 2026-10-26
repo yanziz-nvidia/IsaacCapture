@@ -41,7 +41,7 @@ ui = [
 ]
 ovxr = [
     "ovxr==0.1.0.5842",
-    "cuda-bindings>=12.9,<14",
+    "cuda-bindings>=13,<14",
 ]
 retargeters = [
     "dex-retargeting>=0.4.6,<0.6.0",
