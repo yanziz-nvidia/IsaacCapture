@@ -22,6 +22,21 @@ SPDX-License-Identifier: Apache-2.0
 - **`ReplaySession`** lives in `replay_session.hpp` / `replay_session.cpp` alongside `DeviceIOSession`. Uses **`McapReplayConfig`** (not `McapRecordingConfig`).
 - Factory method is **`ReplaySession::run(const McapReplayConfig&)`**.
 
+## Remote session
+
+- **`RemoteSession`** reads a live record stream through the replay factory's stream mode.
+  Whatever receives the stream feeds the shared `McapRecordStreamReader`; the session only reads
+  it. `update()` never waits: it publishes the newest frame, or nothing once that frame is older
+  than `max_frame_age_ns`.
+- Frames are ordered by the sender's `frame_seq`, never by capture time; the capture time, mapped
+  to this machine's clock, only gives the frame's age (`frame_age_ns()`) and staleness.
+- **`RemoteSession` refuses `MessageChannelTracker`** at construction (see
+  [`../replay_trackers/AGENTS.md`](../replay_trackers/AGENTS.md)). Its trackers' viewers subscribe
+  to their topics on the stream, and `subscribed_topics()` is what the receiver asks the sender for.
+- **`McapRecordingConfig::stream`** makes `DeviceIOSession` record into an `mcap::IWritable`,
+  unchunked (`McapRecordStreamWriter::writer_options()`), instead of a file. The writable must
+  outlive the session, because the writer writes the end of the recording when it is destroyed.
+
 ## Related docs
 
 - Tracker interface contract: [`../deviceio_base/AGENTS.md`](../deviceio_base/AGENTS.md)
