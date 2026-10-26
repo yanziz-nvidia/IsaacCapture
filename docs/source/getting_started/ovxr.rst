@@ -80,7 +80,8 @@ continues to support Python 3.11; on that version the extra does not install OVU
 and the desktop mirror is unavailable. Use a Python 3.12+ environment and select
 both extras with ``isaaccapture[ovxr,desktop-mirror]`` in the installation
 requirement or the application's optional dependencies to include the OVUI
-mirror. The mirror requires a desktop display associated with a CUDA device.
+mirror. The mirror requires CUDA 13 Python bindings, a compatible NVIDIA driver
+as described above, and a desktop display associated with a CUDA device.
 The native camera helper is required only when camera panels are also enabled.
 
 Initialize the renderer before starting the mirror. The mirror uses the OpenGL
