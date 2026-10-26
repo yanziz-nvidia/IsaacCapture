@@ -66,6 +66,10 @@ Shared C++ fixtures (not executables) live under `tests/cpp/viz/support/`
    as before (e.g. viz tests require `BUILD_VIZ`).
 4. Do **not** colocate new pytest/Catch2 trees under `src/` or `examples/`.
 
+- `catch_discover_tests(... PROPERTIES ...)` re-splits a `;` list into further property names, which also drops
+  the `SKIP_RETURN_CODE` it appends (a `SKIP()` then fails). Give each property a single value, e.g. one
+  `ENVIRONMENT` variable plus `ENVIRONMENT_MODIFICATION "VAR=unset:"`. Check with `ctest --show-only=json-v1`.
+
 - FlatBuffers generated `VT_*` constants are vtable offsets, not schema field
   IDs. Compare them with `(field_id + 2) * 2`, as the existing schema tests do.
 
