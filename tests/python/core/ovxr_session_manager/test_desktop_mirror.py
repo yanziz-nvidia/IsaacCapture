@@ -8,6 +8,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -30,7 +31,11 @@ def test_session_import_and_mirror_config_do_not_request_optional_ovui():
         """
         import importlib.abc
         import sys
+        from pathlib import Path
 
+        # CTest supplies the built package via PYTHONPATH, which isolated mode ignores.
+        # Select that exact package explicitly without inheriting parent import state.
+        sys.path.insert(0, sys.argv[1])
         requests = []
 
         class UnavailableOVUI(importlib.abc.MetaPathFinder):
@@ -40,7 +45,10 @@ def test_session_import_and_mirror_config_do_not_request_optional_ovui():
                     raise ModuleNotFoundError(fullname)
 
         sys.meta_path.insert(0, UnavailableOVUI())
+        import isaaccapture
         from isaaccapture.ovxr_session_manager import DesktopMirrorConfig
+
+        assert Path(isaaccapture.__file__).resolve().parent.parent == Path(sys.argv[1])
 
         DesktopMirrorConfig()
         assert not requests, requests
@@ -48,7 +56,13 @@ def test_session_import_and_mirror_config_do_not_request_optional_ovui():
         """
     )
     result = subprocess.run(
-        [sys.executable, "-I", "-c", script],
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            script,
+            str(Path(desktop_mirror.__file__).resolve().parents[2]),
+        ],
         capture_output=True,
         text=True,
         # Keep child diagnostics in the assertion output on failure.
