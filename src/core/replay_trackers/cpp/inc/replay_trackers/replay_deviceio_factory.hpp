@@ -17,6 +17,8 @@ namespace core
 
 class ITracker;
 class ITrackerImpl;
+class McapRecordStreamReader;
+class TrackerRecordSource;
 class ControllerTracker;
 class IControllerTrackerImpl;
 class FullBodyTracker;
@@ -52,11 +54,18 @@ class IMessageChannelTrackerImpl;
  *
  * An empty filename is a session with no recording -- every tracker in it is push-fed -- and
  * yields schemas that declare nothing rather than an error.
+ *
+ * Built on a live record stream instead, every impl reads the newest records the stream has
+ * received, through the same replay impls.
  */
 class ReplayDeviceIOFactory
 {
 public:
     ReplayDeviceIOFactory(std::string filename,
+                          const std::vector<std::pair<const ITracker*, std::string>>& tracker_names);
+
+    //! `stream` must outlive every impl this factory creates, each of which subscribes to its topics on it.
+    ReplayDeviceIOFactory(McapRecordStreamReader& stream,
                           const std::vector<std::pair<const ITracker*, std::string>>& tracker_names);
 
     /** Create tracker impl from a tracker instance using dynamic dispatch. */
@@ -75,10 +84,14 @@ public:
 #include "generated_replay_factory_declarations.inc"
 
 private:
+    void map_names(const std::vector<std::pair<const ITracker*, std::string>>& tracker_names);
     std::string_view get_name(const ITracker* tracker) const;
+    //! Where the next impl reads its records: a reader of its own, or the shared stream.
+    TrackerRecordSource open_source() const;
 
     std::string filename_;
     RecordedSchemas recorded_schemas_;
+    McapRecordStreamReader* stream_ = nullptr;
     std::unordered_map<const ITracker*, std::string> name_map_;
 };
 

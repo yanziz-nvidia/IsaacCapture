@@ -80,9 +80,10 @@ void write_recording(const std::string& path, const core::Serialized<core::TestT
 std::unique_ptr<core::ReplayMetadataTestTrackerImpl> open_replay(const std::string& path)
 {
     const auto recorded = recorded_schemas(path);
-    auto metadata = core::ReplayMetadataTestTrackerImpl::read_metadata(open_reader(path), BASE_NAME, recorded);
+    auto metadata = core::ReplayMetadataTestTrackerImpl::read_metadata(
+        core::TrackerRecordSource(open_reader(path), recorded), BASE_NAME);
     return std::make_unique<core::ReplayMetadataTestTrackerImpl>(
-        open_reader(path), BASE_NAME, recorded, std::move(metadata));
+        core::TrackerRecordSource(open_reader(path), recorded), BASE_NAME, std::move(metadata));
 }
 
 #if defined(XR_USE_TIMESPEC)
