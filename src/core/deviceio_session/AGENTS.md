@@ -33,6 +33,11 @@ SPDX-License-Identifier: Apache-2.0
 - **`RemoteSession` refuses `MessageChannelTracker`** at construction (see
   [`../replay_trackers/AGENTS.md`](../replay_trackers/AGENTS.md)). Its trackers' viewers subscribe
   to their topics on the stream, and `subscribed_topics()` is what the receiver asks the sender for.
+- **`RemoteSessionClient`** (robot) feeds the stream from its Link's receive thread; **`RemoteSessionHost`**
+  (server) records a `DeviceIOSession` into an `McapRecordStreamWriter` and sends one FRAME per `tick()`. A channel
+  is declared (SETUP) with its first record, so `tick()` queues new SETUP before the FRAME. The host closes
+  gracefully so a final ERROR reaches the robot, and the client reports the server's ERROR text in preference to any
+  later link failure.
 - **`McapRecordingConfig::stream`** makes `DeviceIOSession` record into an `mcap::IWritable`,
   unchunked (`McapRecordStreamWriter::writer_options()`), instead of a file. The writable must
   outlive the session, because the writer writes the end of the recording when it is destroyed.
